@@ -187,8 +187,8 @@ def main_loop():
                 try:
                     print("Inside")
                     conn = boto.s3.connect_to_region('us-east-1',
-                    aws_access_key_id = 'AKIATBV3IPRIDEJDPVVA',
-                    aws_secret_access_key = '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',
+                    aws_access_key_id = 'HERE',
+                    aws_secret_access_key = 'HERE',
                     # host = 's3-website-us-east-1.amazonaws.com',
                     # is_secure=True,               # will uncomment if you are not using ssl
                     calling_format = boto.s3.connection.OrdinaryCallingFormat(),
