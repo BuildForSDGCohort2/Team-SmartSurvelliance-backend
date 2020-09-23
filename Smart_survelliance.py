@@ -4,8 +4,12 @@ from datetime import datetime, timedelta
 import numpy as np
 import platform
 import pickle
-
-
+from datetime import date
+import os
+import os 
+import boto
+import boto.s3.connection
+from boto.s3.key import Key
 # Our list of known face encodings and a matching list of metadata about each face.
 known_face_encodings = []
 known_face_metadata = []
@@ -38,17 +42,17 @@ def running_on_jetson_nano():
 
 
 def get_jetson_gstreamer_source(capture_width=1280, capture_height=720, display_width=1280, display_height=720, framerate=60, flip_method=0):
-    """
-    Return an OpenCV-compatible video source description that uses gstreamer to capture video from the camera on a Jetson Nano
-    """
-    return (
-            f'nvarguscamerasrc ! video/x-raw(memory:NVMM), ' +
-            f'width=(int){capture_width}, height=(int){capture_height}, ' +
-            f'format=(string)NV12, framerate=(fraction){framerate}/1 ! ' +
-            f'nvvidconv flip-method={flip_method} ! ' +
-            f'video/x-raw, width=(int){display_width}, height=(int){display_height}, format=(string)BGRx ! ' +
-            'videoconvert ! video/x-raw, format=(string)BGR ! appsink'
-            )
+     """
+     Return an OpenCV-compatible video source description that uses gstreamer to capture video from the camera on a Jetson Nano
+     """
+     return (
+             f'nvarguscamerasrc ! video/x-raw(memory:NVMM), ' +
+             f'width=(int){capture_width}, height=(int){capture_height}, ' +
+             f'format=(string)NV12, framerate=(fraction){framerate}/1 ! ' +
+             f'nvvidconv flip-method={flip_method} ! ' +
+             f'video/x-raw, width=(int){display_width}, height=(int){display_height}, format=(string)BGRx ! ' +
+             'videoconvert ! video/x-raw, format=(string)BGR ! appsink'
+             )
 
 
 def register_new_face(face_encoding, face_image):
@@ -67,7 +71,6 @@ def register_new_face(face_encoding, face_image):
         "seen_frames": 1,
         "face_image": face_image,
     })
-
 
 def lookup_known_face(face_encoding):
     """
@@ -124,6 +127,8 @@ def main_loop():
     number_of_faces_since_save = 0
 
     while True:
+        ctime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         # Grab a single frame of video
         ret, frame = video_capture.read()
 
@@ -147,15 +152,63 @@ def main_loop():
             # If we found the face, label the face with some useful information.
             if metadata is not None:
                 time_at_door = datetime.now() - metadata['first_seen_this_interaction']
-                face_label = f"At door {int(time_at_door.total_seconds())}s"
+                # face_label = f"At door {int(time_at_door.total_seconds())}s"
+                xx = int(time_at_door.total_seconds())
+                face_label = "At door"
 
+                today = date.today()
+
+
+                #current time    
+
+                top, right, bottom, left= face_location
+                face_image = small_frame[top:bottom, left:right]
+                face_image = cv2.resize(face_image, (150, 150))
+                now = datetime.now()
+                dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
             # If this is a brand new face, add it to our list of known faces
             else:
                 face_label = "New visitor!"
+                print(" ")
+                print(" ")
+                print(" ")
+                print(" New visitor")
 
                 # Grab the image of the the face from the current frame of video
                 top, right, bottom, left = face_location
+                if not os.path.exists('./UnknownFaces'):
+                    os.makedirs('./UnknownFaces/')
                 face_image = small_frame[top:bottom, left:right]
+                # Let's save the new face image inside the faces named folder with date and time uniquely
+                # cv2.imwrite('./UnknownFaces/'+str(ctime)+'.jpg',small_frame)
+                cv2.imwrite('./'+str(ctime)+'.jpg',small_frame)
+
+
+                try:
+                    print("Inside")
+                    conn = boto.s3.connect_to_region('us-east-1',
+                    aws_access_key_id = 'AKIATBV3IPRIDEJDPVVA',
+                    aws_secret_access_key = '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',
+                    # host = 's3-website-us-east-1.amazonaws.com',
+                    # is_secure=True,               # will uncomment if you are not using ssl
+                    calling_format = boto.s3.connection.OrdinaryCallingFormat(),
+                    )
+
+                    bucket = conn.get_bucket('detection-garage')
+                    key_name = str(ctime)+'.jpg'
+                    path = 'UnknownFaces' #Directory Under which file should get upload
+                    full_key_name = os.path.join(path, key_name)
+                    print("full_key_name ",full_key_name)
+                    k = bucket.new_key(full_key_name)
+                    k.set_contents_from_filename(key_name)
+                    print("k",k)
+                except Exception as e:
+                    print(str(e))
+                    print("Not Saved - An Error")
+                print("Visitor Captured")
+                print(" ")
+                print(" ")
+                print(" ")
                 face_image = cv2.resize(face_image, (150, 150))
 
                 # Add the new face to our known face data
@@ -177,7 +230,6 @@ def main_loop():
             # Draw a label with a name below the face
             cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
             cv2.putText(frame, face_label, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
-
         # Display recent visitor images
         number_of_recent_visitors = 0
         for metadata in known_face_metadata:
@@ -190,10 +242,10 @@ def main_loop():
 
                 # Label the image with how many times they have visited
                 visits = metadata['seen_count']
-                visit_label = f"{visits} visits"
+                visit_label = "visits",visits
                 if visits == 1:
                     visit_label = "First visit"
-                cv2.putText(frame, visit_label, (x_position + 10, 170), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
+                # cv2.putText(frame, visit_label, (x_position + 10, 170), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
 
         if number_of_recent_visitors > 0:
             cv2.putText(frame, "Visitors at Door", (5, 18), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
@@ -205,7 +257,11 @@ def main_loop():
 
         # Hit 'q' on the keyboard to quit!
         if cv2.waitKey(1) & 0xFF == ord('q'):
-            save_known_faces()
+
+
+            # save_known_faces()
+            # cv2.imwrite("/Users/yudiz/Downloads/DetectedFaces/faces/a.jpg",frame)
+
             break
 
         # We need to save our known faces back to disk every so often in case something crashes.
